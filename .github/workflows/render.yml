@@ -1,0 +1,57 @@
+name: render-bridge
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "src/**"
+      - "scripts/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/render.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { seg: 0, from: 0, to: 202 }
+          - { seg: 1, from: 203, to: 405 }
+          - { seg: 2, from: 406, to: 608 }
+          - { seg: 3, from: 609, to: 811 }
+          - { seg: 4, from: 812, to: 1014 }
+          - { seg: 5, from: 1015, to: 1216 }
+          - { seg: 6, from: 1217, to: 1418 }
+          - { seg: 7, from: 1419, to: 1620 }
+          - { seg: 8, from: 1621, to: 1822 }
+          - { seg: 9, from: 1823, to: 2024 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx remotion browser ensure
+      - name: Render segment
+        env:
+          GL_MODE: swangle
+          COMP_ID: BridgeShort720
+        run: node scripts/render.mjs ${{ matrix.from }} ${{ matrix.to }} 1 out/seg-${{ matrix.seg }}.mp4 2
+      - name: Push segment to its own branch
+        run: |
+          cp out/seg-${{ matrix.seg }}.mp4 /tmp/seg-${{ matrix.seg }}.mp4
+          git config user.email "actions@github.com"
+          git config user.name "github-actions"
+          git switch --orphan seg-${{ matrix.seg }}
+          git rm -rf . >/dev/null 2>&1 || true
+          cp /tmp/seg-${{ matrix.seg }}.mp4 ./seg-${{ matrix.seg }}.mp4
+          git add seg-${{ matrix.seg }}.mp4
+          git commit -m "segment ${{ matrix.seg }} frames ${{ matrix.from }}-${{ matrix.to }}"
+          git push -f origin seg-${{ matrix.seg }}
